@@ -101,6 +101,36 @@ def load_data() -> tuple[list[str], list[str]]:
 def build_pipeline() -> Pipeline:
     """
     Construct a scikit-learn Pipeline combining TF-IDF and Logistic Regression.
+
+    Why a Pipeline?
+    Using Pipeline ensures that the same TfidfVectorizer (with the same fitted
+    vocabulary and IDF weights) is always applied at both training and inference
+    time. Saving the pipeline as one object eliminates the risk of train-serve
+    skew — a common source of silent bugs in ML systems.
+
+    TfidfVectorizer parameters:
+      - max_features=50_000 : caps vocabulary to the 50k most frequent terms,
+        preventing memory issues while retaining sufficient coverage.
+      - ngram_range=(1, 2)  : includes both unigrams and bigrams. Bigrams
+        capture sentiment patterns like "not good" or "highly recommend"
+        that unigrams alone would miss.
+      - sublinear_tf=True   : applies 1+log(tf) scaling, compressing the
+        influence of very frequent words and giving rarer, more discriminative
+        words proportionally more weight.
+      - strip_accents="unicode" : normalizes accented characters for consistency.
+      - min_df=2            : ignores terms appearing in fewer than 2 documents,
+        removing typos and one-off tokens that bloat the feature matrix.
+      - stop_words="english": removes common English words ("the", "is", etc.)
+        that carry no sentiment signal, reducing noise in the feature space.
+
+    LogisticRegression parameters:
+      - C=1.0     : inverse regularization strength. Default value; generalizes
+        well without hyperparameter tuning for this dataset size.
+      - max_iter=1000 : ensures convergence on the large TF-IDF feature space
+        (default 100 is often insufficient for text classification).
+      - solver="lbfgs" : efficient for multi-class problems and large feature
+        spaces; memory-friendly compared to "liblinear".
+      - random_state=42 : fixed seed for reproducibility.
     """
 
     vectorizer = TfidfVectorizer(
@@ -133,6 +163,14 @@ def build_pipeline() -> Pipeline:
 def train_and_evaluate(texts: list[str], labels: list[str]) -> Pipeline:
     """
     Split data, train the pipeline, and print an evaluation report.
+
+    Why stratified split?
+    stratify=labels preserves the class ratio (50/50 here) in both the train
+    and test sets. This is best practice — especially important if the dataset
+    were imbalanced, and makes results comparable across different runs.
+
+    Returns:
+        Trained Pipeline object ready for serialization.
     """
 
     print(f"\n Splitting data  ({int((1-TEST_SIZE)*100)}% train / {int(TEST_SIZE*100)}% test, stratified)...")
@@ -161,6 +199,7 @@ def train_and_evaluate(texts: list[str], labels: list[str]) -> Pipeline:
 
     # Persist evaluation report alongside the model for reference
     MODEL_DIR.mkdir(exist_ok=True)
+    EVAL_REPORT_PATH.parent.mkdir(exist_ok=True)  # create result/ if it doesn't exist
     with open(EVAL_REPORT_PATH, "w", encoding="utf-8") as f:
         f.write("Sentiment Analysis — Evaluation Report\n")
         f.write("=" * 55 + "\n\n")

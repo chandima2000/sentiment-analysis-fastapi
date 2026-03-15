@@ -1,0 +1,8 @@
+.vscode/
+_bmad/
+_bmad-output/
+.agent/
+__pycache__/
+.venv/
+data/
+result/
